@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "treehouse .thrc",
+  "description": "Repo-local treehouse configuration, read from the root of a repository's main worktree only. The same settings a global repos entry can set, for the repository the file lives in; it is the last of the four config layers (built-in defaults, global config.json top level, matching repos entry, .thrc).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 2,
+      "description": "Config schema version. Run `th migrate` to update an older file."
+    },
+    "name": {
+      "type": "string",
+      "description": "What {repo} expands to in path templates for this repository. Overrides the name of a matching global repos entry; empty means the main worktree's directory basename."
+    },
+    "worktree_dir": { "$ref": "#/definitions/worktree_dir" },
+    "default_base": { "$ref": "#/definitions/default_base" },
+    "branch_prefix": { "$ref": "#/definitions/branch_prefix" },
+    "prefix_separator": { "$ref": "#/definitions/prefix_separator" },
+    "copy_hooks": { "$ref": "#/definitions/copy_hooks" },
+    "copy_files": { "$ref": "#/definitions/copy_files" },
+    "link_files": { "$ref": "#/definitions/link_files" },
+    "vscode": { "$ref": "#/definitions/vscode" },
+    "full_paths": { "$ref": "#/definitions/full_paths" },
+    "auto_cd": { "$ref": "#/definitions/auto_cd" },
+    "pre_create": { "$ref": "#/definitions/pre_create" },
+    "post_create": { "$ref": "#/definitions/post_create" },
+    "pre_remove": { "$ref": "#/definitions/pre_remove" },
+    "post_remove": { "$ref": "#/definitions/post_remove" },
+    "run": { "$ref": "#/definitions/run" }
+  },
+  "definitions": {
+    "worktree_dir": {
+      "type": "string",
+      "description": "Path template placing new worktrees. {repo} and {branch} are substituted and a leading ~ expands to the home directory. Defaults to ~/worktrees/{repo}/{branch}."
+    },
+    "default_base": {
+      "type": "string",
+      "description": "The ref new branches start from when the branch exists neither locally nor on origin. Empty means the current HEAD."
+    },
+    "branch_prefix": {
+      "type": "string",
+      "description": "Prepended to branch names `th add` creates, joined with prefix_separator: \"peter\" gives \"peter/fix-login\"."
+    },
+    "prefix_separator": {
+      "type": "string",
+      "description": "Joins branch_prefix to the branch name. Empty means \"/\"."
+    },
+    "copy_hooks": {
+      "type": "boolean",
+      "description": "Copy the repository's git hooks into newly created worktrees. Only relevant when core.hooksPath points inside the worktree (husky's .husky, say); a plain .git/hooks is already shared by every worktree."
+    },
+    "copy_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths or globs, relative to the main worktree, of untracked files (\".env\", say) to copy into newly created worktrees. Files git tracks are never copied — the checkout already placed them. Replaces the list inherited from the layer below; [] disables copying."
+    },
+    "link_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths or globs, relative to the main worktree, of untracked files or directories to symlink rather than copy into newly created worktrees — a shared node_modules, say, so it costs nothing and stays shared. Replaces the list inherited from the layer below; [] disables linking."
+    },
+    "vscode": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "VS Code integration settings. Layers merge this object key by key, so setting one key here keeps the rest of the inherited object.",
+      "properties": {
+        "open": {
+          "type": "boolean",
+          "description": "Open the worktree in VS Code after `th add` creates it. An effective open always beats auto_cd."
+        },
+        "workspace_file": {
+          "type": "boolean",
+          "description": "Write a .code-workspace file into each new worktree, named \"<workspace_prefix><branch>.code-workspace\"."
+        },
+        "workspace_prefix": {
+          "type": "string",
+          "description": "Prepended to the generated workspace file's name."
+        },
+        "window_title": {
+          "type": "string",
+          "description": "Written verbatim as the workspace file's settings[\"window.title\"], so VS Code title variables like ${activeEditorShort} pass through. Empty means the repo name."
+        },
+        "window_color": {
+          "type": "string",
+          "pattern": "^(auto|#[0-9a-fA-F]{6})$",
+          "description": "Colors each worktree window's title bar and status bar via workbench.colorCustomizations in the generated workspace file. \"auto\" derives a stable color from the repo and branch; \"#rrggbb\" uses that color everywhere. Requires workspace_file."
+        },
+        "workspace_paths": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/workspace_path" },
+          "description": "Extra folders added to generated .code-workspace files, after the worktree itself. Replaces the list inherited from the layer below."
+        }
+      }
+    },
+    "workspace_path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "description": "One extra folder for generated .code-workspace files.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The folder's display name in VS Code. Optional."
+        },
+        "path": {
+          "type": "string",
+          "description": "The folder's location; a leading ~ expands to the home directory, anything else is written as given."
+        }
+      }
+    },
+    "full_paths": {
+      "type": "boolean",
+      "description": "Show absolute paths in human-facing output instead of abbreviating the home directory to ~. Same effect as --full-paths."
+    },
+    "auto_cd": {
+      "type": "boolean",
+      "description": "Ask the th shell wrapper (see `th shell-init`) to cd into a worktree `th add` creates. True unless set to false: installing the wrapper is the real opt-in, and without it the setting has no effect. Never applies when the add opens VS Code — the open wins and the terminal stays put."
+    },
+    "pre_create": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Commands run in the main worktree before `th add` creates a worktree, in order, via sh -c, with TH_WORKTREE pointing at the not-yet-existing target. TH_WORKTREE, TH_MAIN, TH_REPO and TH_BRANCH arrive as environment variables, never interpolated into the command. The first failure aborts the add. Replaces the list inherited from the layer below; [] clears it. Commands supplied by a .thrc need approval before they run."
+    },
+    "post_create": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Commands run inside a newly created worktree, in order, via sh -c, with TH_WORKTREE, TH_MAIN, TH_REPO and TH_BRANCH as environment variables. A failure is reported but the worktree survives. Replaces the list inherited from the layer below; [] clears it. Commands supplied by a .thrc need approval before they run."
+    },
+    "pre_remove": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Commands run inside a worktree about to be removed, in order, via sh -c, with TH_WORKTREE, TH_MAIN, TH_REPO and TH_BRANCH as environment variables. The first failure blocks the removal. Replaces the list inherited from the layer below; [] clears it. Commands supplied by a .thrc need approval before they run."
+    },
+    "post_remove": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Commands run in the main worktree after a worktree is removed, in order, via sh -c, with TH_WORKTREE pointing at the now-deleted path and TH_MAIN, TH_REPO and TH_BRANCH alongside it. A failure is reported but the removal stands. Replaces the list inherited from the layer below; [] clears it. Commands supplied by a .thrc need approval before they run."
+    },
+    "run": {
+      "type": "string",
+      "description": "The repository's one foreground command for `th run` — a dev server, a test watcher — executed via sh -c in the current worktree's root with the terminal's stdio attached. Compound commands come free via sh -c. TH_WORKTREE, TH_MAIN, TH_REPO and TH_BRANCH arrive as environment variables, never interpolated into the command. Empty falls through to the layer below; a command supplied by a .thrc needs approval before it runs."
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "name": "myapp",
+  "worktree_dir": "~/worktrees/{repo}/{branch}",
+  "default_base": "develop",
+  "branch_prefix": "team",
+  "prefix_separator": "-",
+  "copy_hooks": true,
+  "copy_files": [".env*", "config/local.json"],
+  "link_files": ["node_modules"],
+  "vscode": {
+    "open": true,
+    "workspace_file": true,
+    "workspace_prefix": "myapp-",
+    "window_title": "myapp — ${activeEditorShort}${separator}${branchName}",
+    "window_color": "auto",
+    "workspace_paths": [
+      { "name": "docs", "path": "~/notes/myapp" },
+      { "path": "~/code/shared-lib" }
+    ]
+  },
+  "full_paths": false,
+  "auto_cd": false,
+  "pre_create": [],
+  "post_create": ["npm ci"],
+  "pre_remove": ["docker compose down"],
+  "post_remove": ["docker volume rm \"app-$TH_BRANCH\" || true"],
+  "run": "npm run dev"
+}

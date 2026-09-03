@@ -1,0 +1,36 @@
+name: Bug report
+description: Something th did wrong
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: >
+        What did you run, what did you expect, and what happened instead?
+        Include the command and its stderr output if you can.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps, ideally starting from a scratch repository.
+  - type: textarea
+    id: config
+    attributes:
+      label: th config
+      description: Output of `th config` (redact anything private).
+      render: json
+  - type: input
+    id: version
+    attributes:
+      label: th version
+      description: Output of `th --version`.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and git version
+      placeholder: macOS 15.5, git 2.45.1

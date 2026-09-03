@@ -1,0 +1,25 @@
+name: Feature request
+description: An idea to make th better
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that th makes awkward today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed behavior
+      description: >
+        What should th do? Sketches of the CLI (`th add --foo`) or config
+        (`"foo": ...`) are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Workarounds or alternatives
+      description: How do you handle this today, if at all?

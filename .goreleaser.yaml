@@ -1,0 +1,53 @@
+version: 2
+
+project_name: treehouse
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/th
+    binary: th
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+homebrew_casks:
+  - repository:
+      owner: AirConditionedSoftware
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    # The cask token stays "treehouse" (from project_name); the binary the
+    # archive ships is th.
+    binaries: [th]
+    homepage: https://github.com/AirConditionedSoftware/treehouse
+    description: Git worktree manager with config-driven placement
+    # The binary is not signed/notarized, so strip the quarantine attribute
+    # Gatekeeper would otherwise block it with.
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/th"]
+          end

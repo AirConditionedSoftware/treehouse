@@ -1,0 +1,75 @@
+name: release
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+# Serialize releases so two quick pushes to main can't race for the same tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - run: go test ./...
+      # On a push to main, mint the next patch version (v0.2.0 -> v0.2.1),
+      # or the next minor (v0.2.x -> v0.3.0) when the head commit message
+      # carries a "#minor" marker — for breaking releases.
+      # Skipped when HEAD is already tagged (e.g. main and a manual tag were
+      # pushed together) so the tag event doesn't double-release, and when
+      # nothing shipped in the binaries changed since the last release —
+      # docs-only pushes don't release. Diffing against the latest tag (not
+      # the pushed range) means a code change preceded by doc pushes or a
+      # failed run is still picked up.
+      - name: Tag next patch version
+        id: bump
+        if: github.ref == 'refs/heads/main'
+        run: |
+          if git describe --tags --exact-match --match 'v*' HEAD >/dev/null 2>&1; then
+            echo "HEAD is already tagged; leaving the release to the tag event"
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          latest=$(git tag --list 'v*' | sort -V | tail -n1)
+          if [ -n "$latest" ]; then
+            changed=$(git diff --name-only "$latest"..HEAD -- '*.go' go.mod go.sum .goreleaser.yaml)
+            if [ -z "$changed" ]; then
+              echo "No code changes since ${latest}; skipping release"
+              echo "created=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Code changes since ${latest}:"
+            echo "$changed"
+          fi
+          latest=${latest:-v0.0.0}
+          IFS=. read -r major minor patch <<< "${latest#v}"
+          if git log -1 --format=%B HEAD | grep -qF '#minor'; then
+            next="v${major}.$((minor + 1)).0"
+          else
+            next="v${major}.${minor}.$((patch + 1))"
+          fi
+          echo "Tagging ${next} (previous: ${latest})"
+          git tag "${next}"
+          git push origin "${next}"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+      - uses: goreleaser/goreleaser-action@v6
+        if: startsWith(github.ref, 'refs/tags/') || steps.bump.outputs.created == 'true'
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
