@@ -1,0 +1,105 @@
+name: vscode
+
+# The extension has its own lifecycle: PRs that touch vscode/ get linted,
+# tested and packaged, and an explicit ext-v* tag publishes the .vsix.
+# Merging to main never releases the extension — unlike the CLI.
+on:
+  pull_request:
+    paths: ["vscode/**", ".github/workflows/vscode.yml"]
+  push:
+    tags: ["ext-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode
+    steps:
+      - uses: actions/checkout@v5
+      # No .go file may ever live under vscode/. release.yml's version-bump
+      # gate diffs '*.go', a pathspec that matches across directories, so a
+      # single Go file here would publish a CLI release on every
+      # extension-only change. node_modules is excluded on purpose: eslint's
+      # `flatted` dependency vendors a .go file, and it is never committed.
+      - name: No Go files under vscode/
+        working-directory: .
+        run: |
+          stray=$(
+            git ls-files -- 'vscode/*.go' 'vscode/**/*.go'
+            find vscode -name '*.go' -not -path '*/node_modules/*'
+          )
+          if [ -n "$stray" ]; then
+            echo "$stray"
+            echo "::error::Go files must never live under vscode/ — release.yml bumps the CLI version whenever '*.go' changes, and that pathspec matches across directories, so this would publish a CLI release for an extension-only change."
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: vscode/.nvmrc
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:unit
+      # The integration test boots a real VS Code, which needs a display.
+      - name: Integration tests
+        run: xvfb-run -a npm run test:integration
+      # The version goes in the filename so the release asset is self-describing.
+      - name: Package
+        id: package
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          npx vsce package --out "treehouse-${version}.vsix"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          # Paths are relative to the workspace: defaults.run only applies to run steps.
+          path: vscode/treehouse-*.vsix
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/ext-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected=${GITHUB_REF_NAME#ext-v}
+          version=$(node -p "require('./vscode/package.json').version")
+          # The tag is the source of truth for the release; a mismatch means
+          # the version bump never landed, so fail rather than ship a .vsix
+          # whose manifest disagrees with the tag.
+          if [ "$version" != "$expected" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} expects vscode/package.json version ${expected}, found ${version}"
+            exit 1
+          fi
+          # Release notes are this version's CHANGELOG section, from its
+          # heading up to the next one.
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { inside = 1; next }
+            inside && /^## / { exit }
+            inside { print }
+          ' vscode/CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "Treehouse VS Code extension ${version}." > notes.md
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "VS Code extension ${GITHUB_REF_NAME#ext-}" \
+            --notes-file notes.md \
+            "treehouse-${version}.vsix"

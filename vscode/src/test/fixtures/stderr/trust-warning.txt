@@ -1,0 +1,5 @@
+Warning: pre_create from /repo/myapp/.thrc is not approved; skipping (run th add interactively to review).
+Creating worktree with new branch "team/trust-demo" from main
+copy_files: no match for ".env"
+Warning: post_create from /repo/myapp/.thrc is not approved; skipping (run th add interactively to review).
+vscode.window_color has no effect without vscode.workspace_file

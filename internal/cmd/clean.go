@@ -142,12 +142,8 @@ func runClean(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	for i, path := range selected {
-		if err := removeWorktree(path, i+1, len(selected)); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err = removeTargets(selected)
+	return err
 }
 
 func init() {

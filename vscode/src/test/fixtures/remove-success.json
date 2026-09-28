@@ -1,0 +1,9 @@
+[
+  {
+    "target": "spare-clean",
+    "path": "/repo/worktrees/myapp/spare-clean",
+    "branch": "spare-clean",
+    "removed": true,
+    "branch_action": "kept"
+  }
+]

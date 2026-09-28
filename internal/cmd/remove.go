@@ -18,6 +18,36 @@ var (
 	removeDeleteBranch bool
 	removeNoPreRemove  bool
 	removeNoPostRemove bool
+	removeJSON         bool
+)
+
+// removeResult is one attempted removal: the element of the --json document
+// and the record the human narration is derived from. Only target and
+// removed are unconditional — every other field describes a step that may
+// never have been reached.
+type removeResult struct {
+	Target        string `json:"target"`
+	Path          string `json:"path,omitempty"`
+	Branch        string `json:"branch,omitempty"`
+	Removed       bool   `json:"removed"`
+	SkippedDirty  bool   `json:"skipped_dirty,omitempty"`
+	BranchAction  string `json:"branch_action,omitempty"`
+	BranchReason  string `json:"branch_reason,omitempty"`
+	BranchError   string `json:"branch_error,omitempty"`
+	WorkspaceFile string `json:"workspace_file,omitempty"`
+	Error         string `json:"error,omitempty"`
+}
+
+// The branch outcome vocabulary, spelled exactly as --json emits it.
+const (
+	branchDeleted = "deleted"
+	branchKept    = "kept"
+
+	reasonDefaultBranch  = "default_branch"
+	reasonNotFullyMerged = "not_fully_merged"
+	reasonDeclined       = "declined"
+	reasonDeleteFailed   = "delete_failed"
+	reasonForced         = "forced"
 )
 
 var removeCmd = &cobra.Command{
@@ -44,26 +74,53 @@ does not extend to branch deletion.`,
 
 func runRemove(args []string) error {
 	if len(args) == 0 {
-		return removeInteractive()
+		return finishRemove(removeInteractive())
 	}
-	for i, name := range args {
-		if err := removeWorktree(name, i+1, len(args)); err != nil {
-			return err
+	return finishRemove(removeTargets(args))
+}
+
+// removeTargets removes each named worktree in order, stopping at the first
+// failure — the single loop behind every call site. The failing target is
+// still part of the results, carrying its error.
+func removeTargets(names []string) ([]removeResult, error) {
+	results := make([]removeResult, 0, len(names))
+	for i, name := range names {
+		res, err := removeWorktree(name, i+1, len(names))
+		if err != nil {
+			res.Error = err.Error()
+			return append(results, res), err
 		}
+		results = append(results, res)
 	}
-	return nil
+	return results, nil
+}
+
+// finishRemove emits the --json document before propagating err, so a run
+// that failed part way still reports what it did. A nil slice prints as [],
+// never null. Without --json it is a pass-through.
+func finishRemove(results []removeResult, err error) error {
+	if !removeJSON {
+		return err
+	}
+	if results == nil {
+		results = []removeResult{}
+	}
+	if encErr := printJSON(results); encErr != nil && err == nil {
+		return encErr
+	}
+	return err
 }
 
 // removeInteractive shows a multi-select of every worktree except the main
 // one and the one the user is standing in.
-func removeInteractive() error {
+func removeInteractive() ([]removeResult, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return errors.New("interactive selection needs a terminal; pass branch names instead (see th list)")
+		return nil, errors.New("interactive selection needs a terminal; pass branch names instead (see th list)")
 	}
 
 	wts, err := gitx.ListWorktrees(".")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cur, _ := gitx.Toplevel(".")
 
@@ -79,7 +136,7 @@ func removeInteractive() error {
 	}
 	if len(candidates) == 0 {
 		fmt.Fprintln(os.Stderr, "No removable worktrees (the main worktree and the one you're in don't count).")
-		return nil
+		return []removeResult{}, nil
 	}
 
 	infos := worktreeInfos(candidates)
@@ -90,29 +147,27 @@ func removeInteractive() error {
 	}
 
 	var selected []string
+	// The form renders on stderr either way, but TERM=dumb flips huh into
+	// accessible mode, which would otherwise transcribe onto the --json
+	// stream stdout now conditionally owns.
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewMultiSelect[string]().
 			Title("Select worktrees to remove").
 			Options(opts...).
 			Value(&selected),
-	))
+	)).WithOutput(os.Stderr)
 	if err := form.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			return errors.New("aborted")
+			return nil, errors.New("aborted")
 		}
-		return err
+		return nil, err
 	}
 	if len(selected) == 0 {
 		fmt.Fprintln(os.Stderr, "Nothing selected.")
-		return nil
+		return []removeResult{}, nil
 	}
 
-	for i, path := range selected {
-		if err := removeWorktree(path, i+1, len(selected)); err != nil {
-			return err
-		}
-	}
-	return nil
+	return removeTargets(selected)
 }
 
 // confirmForceRemoval asks whether a dirty worktree should be removed
@@ -126,7 +181,7 @@ func confirmForceRemoval(w gitx.Worktree) (bool, error) {
 			Affirmative("Force remove").
 			Negative("Skip").
 			Value(&ok),
-	))
+	)).WithOutput(os.Stderr)
 	if err := form.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return false, errors.New("aborted")
@@ -148,7 +203,7 @@ func confirmBranchDelete(branch string) (bool, error) {
 			Affirmative("Delete branch").
 			Negative("Keep branch").
 			Value(&ok),
-	))
+	)).WithOutput(os.Stderr)
 	if err := form.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return false, errors.New("aborted")
@@ -197,10 +252,11 @@ func truncate(s string, n int) string {
 // removeWorktree removes the worktree matching name. step and total drive
 // the [step/total] progress prefix; multi-removals pass their position,
 // single removals 1, 1 (no prefix).
-func removeWorktree(name string, step, total int) error {
+func removeWorktree(name string, step, total int) (removeResult, error) {
+	result := removeResult{Target: name}
 	wts, err := gitx.ListWorktrees(".")
 	if err != nil {
-		return err
+		return result, err
 	}
 
 	// Display preferences and (later) workspace-file cleanup; a broken
@@ -212,14 +268,15 @@ func removeWorktree(name string, step, total int) error {
 
 	target := findWorktree(wts, name)
 	if target == nil {
-		return fmt.Errorf("no worktree found for %q (see th list)", name)
+		return result, fmt.Errorf("no worktree found for %q (see th list)", name)
 	}
+	result.Path, result.Branch = target.Path, target.Branch
 
 	if target.Path == wts[0].Path {
-		return fmt.Errorf("refusing to remove the main worktree at %s", displayPath(target.Path))
+		return result, fmt.Errorf("refusing to remove the main worktree at %s", displayPath(target.Path))
 	}
 	if cur, err := gitx.Toplevel("."); err == nil && samePath(cur, target.Path) {
-		return fmt.Errorf("cannot remove the worktree you are in; cd out of %s first", displayPath(target.Path))
+		return result, fmt.Errorf("cannot remove the worktree you are in; cd out of %s first", displayPath(target.Path))
 	}
 
 	force := removeForce
@@ -228,15 +285,16 @@ func removeWorktree(name string, step, total int) error {
 		// means there is nothing to warn about; let git decide below.
 		if dirty, err := gitx.IsDirty(target.Path); err == nil && dirty {
 			if !term.IsTerminal(int(os.Stdin.Fd())) {
-				return fmt.Errorf("worktree %s has modified or untracked files; re-run with --force", displayPath(target.Path))
+				return result, fmt.Errorf("worktree %s has modified or untracked files; re-run with --force", displayPath(target.Path))
 			}
 			ok, err := confirmForceRemoval(*target)
 			if err != nil {
-				return err
+				return result, err
 			}
 			if !ok {
 				fmt.Fprintf(os.Stderr, "Skipped %s\n", displayPath(target.Path))
-				return nil
+				result.SkippedDirty = true
+				return result, nil
 			}
 			force = true
 		}
@@ -263,11 +321,11 @@ func removeWorktree(name string, step, total int) error {
 	if cfgErr == nil && len(res.PreRemove) > 0 && !removeNoPreRemove {
 		cmds, err := gateRepoHook(wts[0].Path, res, "pre_remove", res.PreRemove)
 		if err != nil {
-			return err
+			return result, err
 		}
 		if len(cmds) > 0 {
 			if err := runHook("pre_remove", target.Path, target.Path, wts[0].Path, repo, target.Branch, cmds); err != nil {
-				return fmt.Errorf("%w; %s was not removed (skip teardown with --no-pre-remove)", err, displayPath(target.Path))
+				return result, fmt.Errorf("%w; %s was not removed (skip teardown with --no-pre-remove)", err, displayPath(target.Path))
 			}
 		}
 	}
@@ -292,8 +350,9 @@ func removeWorktree(name string, step, total int) error {
 		_, err := gitx.Run(".", rmArgs...)
 		return err
 	}); err != nil {
-		return err
+		return result, err
 	}
+	result.Removed = true
 
 	// The th-generated workspace file lives next to the worktree; clean it
 	// up too so it doesn't orphan. Only when th manages workspace files for
@@ -301,13 +360,16 @@ func removeWorktree(name string, step, total int) error {
 	if cfgErr == nil && res.VSCodeWorkspaceFileEnabled() {
 		if ws := workspaceFilePath(res.Settings, target.Path, target.Branch); ws != "" {
 			if err := os.Remove(ws); err == nil {
+				result.WorkspaceFile = ws
 				fmt.Fprintf(os.Stderr, "Removed workspace file %s\n", displayPath(ws))
 			}
 		}
 	}
 
-	note, noteErr := resolveBranch(*target)
-	if note != "" {
+	outcome, noteErr := resolveBranch(*target)
+	result.BranchAction, result.BranchReason = outcome.Action, outcome.Reason
+	result.BranchError = outcome.Detail
+	if note := outcome.note(); note != "" {
 		fmt.Fprintf(os.Stderr, "Removed worktree %s %s\n", displayPath(target.Path), note)
 	} else {
 		fmt.Fprintf(os.Stderr, "Removed worktree %s\n", displayPath(target.Path))
@@ -315,7 +377,7 @@ func removeWorktree(name string, step, total int) error {
 	if noteErr != nil {
 		// The user aborted the branch prompt; surface the abort and skip
 		// the post_remove observer.
-		return noteErr
+		return result, noteErr
 	}
 
 	// post_remove runs last, once the removal has fully settled — after
@@ -326,62 +388,97 @@ func removeWorktree(name string, step, total int) error {
 	if cfgErr == nil && len(res.PostRemove) > 0 && !removeNoPostRemove {
 		cmds, err := gateRepoHook(wts[0].Path, res, "post_remove", res.PostRemove)
 		if err != nil {
-			return err
+			return result, err
 		}
 		if len(cmds) > 0 {
 			if err := runHook("post_remove", wts[0].Path, target.Path, wts[0].Path, repo, target.Branch, cmds); err != nil {
-				return fmt.Errorf("worktree removed, but %w", err)
+				return result, fmt.Errorf("worktree removed, but %w", err)
 			}
 		}
 	}
-	return nil
+	return result, nil
+}
+
+// branchOutcome is what happened to the branch of a just-removed worktree:
+// the machine fields --json reports and the source of the note appended to
+// the Removed line. A zero value means there was nothing to decide — a
+// detached worktree, or a branch that vanished since the listing.
+type branchOutcome struct {
+	Branch string // "" — detached, or vanished since listing
+	Action string // "deleted" | "kept" | ""
+	Reason string // "", "default_branch", "not_fully_merged", "declined", "delete_failed", "forced"
+	Detail string // git's error text for delete_failed
+}
+
+// note renders the parenthesized suffix of the Removed line. The strings are
+// a compatibility surface: th's human output has always said exactly this.
+func (o branchOutcome) note() string {
+	if o.Branch == "" || o.Action == "" {
+		return ""
+	}
+	if o.Action == branchDeleted {
+		return fmt.Sprintf("(branch %q deleted)", o.Branch)
+	}
+	switch o.Reason {
+	case reasonDefaultBranch:
+		return fmt.Sprintf("(branch %q kept: default branch)", o.Branch)
+	case reasonNotFullyMerged:
+		return fmt.Sprintf("(branch %q kept: not fully merged; use git branch -D to force)", o.Branch)
+	case reasonDeleteFailed:
+		return fmt.Sprintf("(branch %q kept: %s)", o.Branch, o.Detail)
+	}
+	return fmt.Sprintf("(branch %q kept)", o.Branch)
 }
 
 // resolveBranch decides what happens to the branch of a just-removed
-// worktree and returns the parenthesized note for the Removed line (""
-// for a detached worktree or a branch that vanished since listing). With
-// --delete-branch it tries git branch -d and reacts to a refusal: on a
-// terminal it asks before escalating to -D, otherwise the branch is kept
-// with a note — the worktree is already gone, so an error here would
-// misreport a succeeded removal and strand later candidates in
+// worktree. With --delete-branch it tries git branch -d and reacts to a
+// refusal: on a terminal it asks before escalating to -D, otherwise the
+// branch is kept with a note — the worktree is already gone, so an error
+// here would misreport a succeeded removal and strand later candidates in
 // multi-remove loops. err is non-nil only when the confirm prompt is
 // aborted or fails; the note is still printed first.
-func resolveBranch(target gitx.Worktree) (string, error) {
+func resolveBranch(target gitx.Worktree) (branchOutcome, error) {
 	if target.Branch == "" {
-		return "", nil
+		return branchOutcome{}, nil
 	}
+	kept := branchOutcome{Branch: target.Branch, Action: branchKept}
 	if !removeDeleteBranch {
-		return fmt.Sprintf("(branch %q kept)", target.Branch), nil
+		return kept, nil
 	}
 	if target.Branch == gitx.DefaultBranch(".") {
 		// Reachable when the default branch was checked out in a linked
 		// worktree; deleting it is never what anyone wants.
-		return fmt.Sprintf("(branch %q kept: default branch)", target.Branch), nil
+		kept.Reason = reasonDefaultBranch
+		return kept, nil
 	}
 	if !gitx.LocalBranchExists(".", target.Branch) {
-		return "", nil
+		return branchOutcome{}, nil
 	}
 	if _, err := gitx.Run(".", "branch", "-d", target.Branch); err == nil {
-		return fmt.Sprintf("(branch %q deleted)", target.Branch), nil
+		return branchOutcome{Branch: target.Branch, Action: branchDeleted}, nil
 	}
 	// git refused -d, which means the branch is not fully merged in git's
 	// eyes (merged into HEAD or its upstream). Force deletion is one
 	// deliberate step away: a prompt on a terminal, git branch -D by hand
 	// otherwise — --force never escalates.
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return fmt.Sprintf("(branch %q kept: not fully merged; use git branch -D to force)", target.Branch), nil
+		kept.Reason = reasonNotFullyMerged
+		return kept, nil
 	}
 	ok, err := confirmBranchDelete(target.Branch)
 	if err != nil {
-		return fmt.Sprintf("(branch %q kept)", target.Branch), err
+		kept.Reason = reasonDeclined
+		return kept, err
 	}
 	if !ok {
-		return fmt.Sprintf("(branch %q kept)", target.Branch), nil
+		kept.Reason = reasonDeclined
+		return kept, nil
 	}
 	if _, err := gitx.Run(".", "branch", "-D", target.Branch); err != nil {
-		return fmt.Sprintf("(branch %q kept: %v)", target.Branch, err), nil
+		kept.Reason, kept.Detail = reasonDeleteFailed, err.Error()
+		return kept, nil
 	}
-	return fmt.Sprintf("(branch %q deleted)", target.Branch), nil
+	return branchOutcome{Branch: target.Branch, Action: branchDeleted, Reason: reasonForced}, nil
 }
 
 func init() {
@@ -389,5 +486,6 @@ func init() {
 	removeCmd.Flags().BoolVarP(&removeDeleteBranch, "delete-branch", "d", false, "also delete the branch (git branch -d; asks before forcing an unmerged one)")
 	removeCmd.Flags().BoolVar(&removeNoPreRemove, "no-pre-remove", false, "skip the config's pre_remove commands")
 	removeCmd.Flags().BoolVar(&removeNoPostRemove, "no-post-remove", false, "skip the config's post_remove commands")
+	removeCmd.Flags().BoolVar(&removeJSON, "json", false, "output removal results as JSON")
 	rootCmd.AddCommand(removeCmd)
 }

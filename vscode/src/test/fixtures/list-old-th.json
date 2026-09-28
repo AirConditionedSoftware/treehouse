@@ -1,0 +1,19 @@
+[
+  {
+    "path": "/repo/myapp",
+    "head": "77560d77d9579f0b55455174ca00928dc4239507",
+    "branch": "main"
+  },
+  {
+    "path": "/repo/worktrees/myapp/dirty-work",
+    "head": "a7ca24c4f2e99be3f94e15f77d056dfabb7ffc66",
+    "branch": "dirty-work"
+  },
+  {
+    "path": "/repo/worktrees/myapp/feature-login",
+    "head": "c5173c0f2e68830c42bbda640c79d5da0404f237",
+    "branch": "feature/login",
+    "locked": true,
+    "locked_reason": "pinned for review"
+  }
+]

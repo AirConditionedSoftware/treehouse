@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -23,6 +21,14 @@ type listEntry struct {
 	Ahead        *int `json:"ahead,omitempty"`
 	Behind       *int `json:"behind,omitempty"`
 	UpstreamGone bool `json:"upstream_gone,omitempty"`
+	// Dirty is the number of changed paths (staged, unstaged, untracked);
+	// 0 is a clean worktree, absent means it could not be probed (a bare
+	// entry, or a directory that is gone).
+	Dirty *int `json:"dirty,omitempty"`
+	// Merged reports whether the branch is contained in the default
+	// branch. Absent when merge status does not apply: a bare or detached
+	// worktree, the default branch itself, or no default branch at all.
+	Merged *bool `json:"merged,omitempty"`
 }
 
 var listCmd = &cobra.Command{
@@ -38,23 +44,33 @@ var listCmd = &cobra.Command{
 		if res, err := config.Resolve(wts[0].Path); err == nil {
 			applyDisplayConfig(res.Settings)
 		}
+		// The same facts the human format shows, so the two views cannot
+		// drift apart.
+		defBranch := gitx.DefaultBranch(".")
 		if listJSON {
 			entries := make([]listEntry, len(wts))
 			for i, w := range wts {
 				entries[i] = listEntry{Worktree: w}
-				if ahead, behind, ok, gone := syncState(w.Branch); ok {
+				f := gatherFacts(w, defBranch)
+				if f.syncKnown {
+					ahead, behind := f.ahead, f.behind
 					entries[i].Ahead, entries[i].Behind = &ahead, &behind
-				} else if gone {
+				} else if f.upstreamGone {
 					entries[i].UpstreamGone = true
 				}
+				if f.changesOK {
+					dirty := f.changes
+					entries[i].Dirty = &dirty
+				}
+				if f.mergeKnown {
+					merged := f.merged
+					entries[i].Merged = &merged
+				}
 			}
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			return enc.Encode(entries)
+			return printJSON(entries)
 		}
 
 		current, _ := gitx.Toplevel(".")
-		defBranch := gitx.DefaultBranch(".")
 		infos := worktreeInfos(wts)
 
 		var b strings.Builder

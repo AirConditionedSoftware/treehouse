@@ -33,16 +33,20 @@ jobs:
       # docs-only pushes don't release. Diffing against the latest tag (not
       # the pushed range) means a code change preceded by doc pushes or a
       # failed run is still picked up.
+      # The tag globs are 'v[0-9]*', not 'v*': the VS Code extension releases
+      # on ext-v* tags, and any tag that is not a CLI version must never be
+      # picked as the latest release — it would sort ahead under `sort -V`
+      # and this step would compute and push a garbage version from it.
       - name: Tag next patch version
         id: bump
         if: github.ref == 'refs/heads/main'
         run: |
-          if git describe --tags --exact-match --match 'v*' HEAD >/dev/null 2>&1; then
+          if git describe --tags --exact-match --match 'v[0-9]*' HEAD >/dev/null 2>&1; then
             echo "HEAD is already tagged; leaving the release to the tag event"
             echo "created=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          latest=$(git tag --list 'v*' | sort -V | tail -n1)
+          latest=$(git tag --list 'v[0-9]*' | sort -V | tail -n1)
           if [ -n "$latest" ]; then
             changed=$(git diff --name-only "$latest"..HEAD -- '*.go' go.mod go.sum .goreleaser.yaml)
             if [ -z "$changed" ]; then

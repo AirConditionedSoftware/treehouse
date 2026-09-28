@@ -27,8 +27,15 @@ go test ./internal/cmd -run TestLifecycleHooks -v
 goreleaser release --snapshot --clean   # validate the release config locally
 ```
 
+```sh
+# the VS Code extension (Node 22, pinned in vscode/.nvmrc)
+cd vscode && npm ci && npm run typecheck && npm run lint && npm run test:unit
+npm run test:integration   # @vscode/test-electron; boots a real VS Code
+```
+
 CI (`.github/workflows/ci.yml`) runs gofmt, `go vet`, and `go test` on Linux and
-macOS for every PR.
+macOS for every PR. `vscode.yml` lints, typechecks, tests, and packages the
+extension on PRs that touch `vscode/**`.
 
 ## Architecture
 
@@ -54,6 +61,19 @@ Four packages, one direction of dependency: `cmd/th` → `internal/cmd` →
 `th add` and `th refresh` share `provisionWorktree` in `add.go` — hooks copy,
 `copy_files`/`link_files`, `post_create`, workspace file. Changes to provisioning
 belong there so both commands stay in step.
+
+**`vscode/`** is not a fifth Go package: it's a TypeScript workspace holding a VS
+Code extension that is a thin client over the CLI. It reads `th`'s `--json`
+contracts (`list --json`, `remove --json`, `config --effective --json`) and routes
+every mutation through the binary — no git mutation, config merge, or placement
+logic reimplemented in TypeScript. **Never put a `.go` file under `vscode/`**:
+release.yml's version-bump gate diffs `'*.go'`, a pathspec that matches across
+directories, so one would publish a CLI release on every extension-only change
+(`vscode.yml` fails the build if it finds one). The one exception is
+`vscode/node_modules/`, which is gitignored and where eslint's `flatted` dependency
+vendors a `.go` file — `go test ./...` and `gofmt -l .` walk it locally, harmlessly.
+Extension releases are tagged `ext-v*` — `v*` is the CLI's and fires goreleaser —
+and never happen on merge.
 
 ## Conventions that matter
 

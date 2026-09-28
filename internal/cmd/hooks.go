@@ -102,7 +102,7 @@ func approveRepoCommands(mainPath, localFile, hook string, cmds []string) (bool,
 			Affirmative("Allow and remember").
 			Negative("Skip this time").
 			Value(&allow),
-	))
+	)).WithOutput(os.Stderr)
 	if err := form.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return false, errors.New("aborted")

@@ -232,6 +232,44 @@ func TestEndToEnd(t *testing.T) {
 				t.Errorf("feature/login %s = %v; want the key absent without an upstream", key, v)
 			}
 		}
+
+		// Everything is clean here, so dirty is present and 0 — absent
+		// would mean "not probed", which is a different answer.
+		if d, ok := mainWT["dirty"].(float64); !ok || d != 0 {
+			t.Errorf("main dirty = %v; want present and 0", mainWT["dirty"])
+		}
+		// Merge status doesn't apply to the default branch itself.
+		if v, ok := mainWT["merged"]; ok {
+			t.Errorf("main merged = %v; want the key absent on the default branch", v)
+		}
+		if m, ok := fl["merged"].(bool); !ok || !m {
+			t.Errorf("feature/login merged = %v; want true while it sits on main's commit", fl["merged"])
+		}
+
+		// An untracked file and a commit of its own make the same worktree
+		// dirty and unmerged; both facts come back through --json.
+		wt := filepath.Join(trees, "myapp", "feature-login")
+		scratch := filepath.Join(wt, "scratch.txt")
+		if err := os.WriteFile(scratch, []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		git(t, home, wt, "commit", "--allow-empty", "-m", "unmerged work")
+		defer func() {
+			os.Remove(scratch)
+			git(t, home, wt, "reset", "--hard", "HEAD~1")
+		}()
+
+		out, _, err = th(t, home, cfg, repo, "list", "--json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		fl = entryByBranch(t, out, "feature/login")
+		if d, ok := fl["dirty"].(float64); !ok || d != 1 {
+			t.Errorf("feature/login dirty = %v; want 1 for the one untracked file", fl["dirty"])
+		}
+		if m, ok := fl["merged"].(bool); !ok || m {
+			t.Errorf("feature/login merged = %v; want false after a commit of its own", fl["merged"])
+		}
 	})
 
 	t.Run("list shows ahead/behind vs upstream", func(t *testing.T) {
@@ -514,6 +552,126 @@ func TestEndToEnd(t *testing.T) {
 			t.Errorf("stderr = %q; want dirty-worktree message pointing at --force", stderr)
 		}
 		if _, stderr, err := th(t, home, cfg, repo, "remove", "--force", "dirty"); err != nil {
+			t.Fatalf("remove --force: %v\n%s", err, stderr)
+		}
+	})
+
+	// removeResults unmarshals a whole remove --json document — parsing the
+	// trimmed stdout in one go is itself a check that nothing human leaked
+	// onto the machine channel.
+	removeResults := func(t *testing.T, out string) []map[string]any {
+		t.Helper()
+		var results []map[string]any
+		if err := json.Unmarshal([]byte(out), &results); err != nil {
+			t.Fatalf("remove --json produced invalid JSON: %v\n%s", err, out)
+		}
+		return results
+	}
+
+	t.Run("remove json reports the target", func(t *testing.T) {
+		if _, stderr, err := th(t, home, cfg, repo, "add", "json-rm"); err != nil {
+			t.Fatalf("%v\n%s", err, stderr)
+		}
+		out, stderr, err := th(t, home, cfg, repo, "remove", "--json", "json-rm")
+		if err != nil {
+			t.Fatalf("%v\n%s", err, stderr)
+		}
+		results := removeResults(t, out)
+		if len(results) != 1 {
+			t.Fatalf("remove --json returned %d results; want 1:\n%s", len(results), out)
+		}
+		got := results[0]
+		want := map[string]any{
+			"target":        "json-rm",
+			"branch":        "json-rm",
+			"removed":       true,
+			"branch_action": "kept",
+		}
+		for key, value := range want {
+			if got[key] != value {
+				t.Errorf("result %s = %v; want %v", key, got[key], value)
+			}
+		}
+		// The path is absolute and machine-usable — never abbreviated to
+		// ~ the way stderr abbreviates it. git reports it symlink-resolved.
+		wantPath, err := filepath.EvalSymlinks(filepath.Join(trees, "myapp"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got["path"] != filepath.Join(wantPath, "json-rm") {
+			t.Errorf("result path = %v; want %v", got["path"], filepath.Join(wantPath, "json-rm"))
+		}
+		// Nothing decided the branch's fate beyond the default, nothing
+		// was skipped, nothing failed.
+		for _, key := range []string{"branch_reason", "branch_error", "skipped_dirty", "error"} {
+			if v, ok := got[key]; ok {
+				t.Errorf("result %s = %v; want the key absent on a plain success", key, v)
+			}
+		}
+		// The human narration is unchanged by --json.
+		if !strings.Contains(stderr, "Removed worktree") {
+			t.Errorf("stderr = %q; want it to still say Removed worktree", stderr)
+		}
+
+		// The same document comes out of the th -r shorthand.
+		if _, stderr, err := th(t, home, cfg, repo, "add", "json-rm-root"); err != nil {
+			t.Fatalf("%v\n%s", err, stderr)
+		}
+		out, stderr, err = th(t, home, cfg, repo, "-r", "--json", "json-rm-root")
+		if err != nil {
+			t.Fatalf("%v\n%s", err, stderr)
+		}
+		if results = removeResults(t, out); len(results) != 1 || results[0]["removed"] != true {
+			t.Errorf("th -r --json = %s; want one removed result", out)
+		}
+	})
+
+	t.Run("remove json still emits on failure", func(t *testing.T) {
+		if _, stderr, err := th(t, home, cfg, repo, "add", "json-multi"); err != nil {
+			t.Fatalf("%v\n%s", err, stderr)
+		}
+		out, _, err := th(t, home, cfg, repo, "remove", "--json", "json-multi", "no-such-branch")
+		if err == nil {
+			t.Fatal("expected an error for the missing second target")
+		}
+		results := removeResults(t, out)
+		if len(results) != 2 {
+			t.Fatalf("remove --json returned %d results; want the failed target too:\n%s", len(results), out)
+		}
+		if results[0]["removed"] != true {
+			t.Errorf("first result = %v; want it removed before the failure", results[0])
+		}
+		if results[1]["removed"] != false {
+			t.Errorf("second result removed = %v; want false", results[1]["removed"])
+		}
+		if msg, _ := results[1]["error"].(string); !strings.Contains(msg, "no worktree found") {
+			t.Errorf("second result error = %v; want it to name the missing worktree", results[1]["error"])
+		}
+	})
+
+	t.Run("remove json dirty non-tty", func(t *testing.T) {
+		path, stderr, err := th(t, home, cfg, repo, "add", "json-dirty")
+		if err != nil {
+			t.Fatalf("%v\n%s", err, stderr)
+		}
+		if err := os.WriteFile(filepath.Join(path, "untracked.txt"), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out, _, err := th(t, home, cfg, repo, "remove", "--json", "json-dirty")
+		if err == nil {
+			t.Fatal("expected an error removing a dirty worktree without --force")
+		}
+		results := removeResults(t, out)
+		if len(results) != 1 {
+			t.Fatalf("remove --json returned %d results; want 1:\n%s", len(results), out)
+		}
+		if results[0]["removed"] != false {
+			t.Errorf("result removed = %v; want false", results[0]["removed"])
+		}
+		if msg, _ := results[0]["error"].(string); !strings.Contains(msg, "--force") {
+			t.Errorf("result error = %v; want it to point at --force", results[0]["error"])
+		}
+		if _, stderr, err := th(t, home, cfg, repo, "remove", "--force", "json-dirty"); err != nil {
 			t.Fatalf("remove --force: %v\n%s", err, stderr)
 		}
 	})
@@ -1431,6 +1589,121 @@ func TestEndToEnd(t *testing.T) {
 		assertEffectiveRow(t, out, "worktree_dir", "~/worktrees/{repo}/{branch}", "default")
 		if strings.Contains(out, "\nname ") {
 			t.Errorf("stdout = %q; want no name row outside a repository", out)
+		}
+	})
+
+	t.Run("config effective json", func(t *testing.T) {
+		cfgEff := filepath.Join(work, "th-effective-json.json")
+		cfgEffJSON := `{
+  "default_base": "main",
+  "branch_prefix": "global",
+  "repos": [{"name": "entryname", "path": "` + repo + `", "branch_prefix": "team", "vscode": {"workspace_file": true}}]
+}`
+		if err := os.WriteFile(cfgEff, []byte(cfgEffJSON), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(localCfg, []byte(`{"name": "localname", "copy_files": [".env"]}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(localCfg)
+
+		out, stderr, err := th(t, home, cfgEff, repo, "config", "--effective", "--json")
+		if err != nil {
+			t.Fatalf("%v\n%s", err, stderr)
+		}
+		var doc map[string]any
+		if err := json.Unmarshal([]byte(out), &doc); err != nil {
+			t.Fatalf("config --effective --json produced invalid JSON: %v\n%s", err, out)
+		}
+		// The layer preamble still narrates on stderr.
+		if !strings.Contains(stderr, "repos[0] matches") {
+			t.Errorf("stderr = %q; want the repos[0] notice", stderr)
+		}
+
+		settings, ok := doc["settings"].(map[string]any)
+		if !ok {
+			t.Fatalf("settings = %v; want an object", doc["settings"])
+		}
+		for key, want := range map[string]any{
+			"branch_prefix": "team",
+			"default_base":  "main",
+			// The lazy default is applied, so the value is the one that
+			// would actually join.
+			"prefix_separator": "/",
+			// A *bool that no layer set still comes back concrete.
+			"auto_cd":    true,
+			"copy_hooks": false,
+		} {
+			if settings[key] != want {
+				t.Errorf("settings.%s = %v; want %v", key, settings[key], want)
+			}
+		}
+		if files, ok := settings["copy_files"].([]any); !ok || len(files) != 1 || files[0] != ".env" {
+			t.Errorf("settings.copy_files = %v; want [\".env\"] from the .thrc", settings["copy_files"])
+		}
+		vscode, ok := settings["vscode"].(map[string]any)
+		if !ok {
+			t.Fatalf("settings.vscode = %v; want a nested object", settings["vscode"])
+		}
+		if vscode["workspace_file"] != true || vscode["open"] != false {
+			t.Errorf("settings.vscode = %v; want concrete workspace_file true and open false", vscode)
+		}
+
+		sources, ok := doc["sources"].(map[string]any)
+		if !ok {
+			t.Fatalf("sources = %v; want an object", doc["sources"])
+		}
+		for key, want := range map[string]string{
+			"branch_prefix":         "repos[0]",
+			"default_base":          "top-level",
+			"copy_files":            ".thrc",
+			"worktree_dir":          "default",
+			"vscode.workspace_file": "repos[0]",
+		} {
+			if sources[key] != want {
+				t.Errorf("sources.%s = %v; want %q", key, sources[key], want)
+			}
+		}
+
+		repoDoc, ok := doc["repo"].(map[string]any)
+		if !ok {
+			t.Fatalf("repo = %v; want an object inside a repository", doc["repo"])
+		}
+		if repoDoc["name"] != "localname" {
+			t.Errorf("repo.name = %v; want localname from the .thrc", repoDoc["name"])
+		}
+		if idx, ok := repoDoc["repos_index"].(float64); !ok || idx != 0 {
+			t.Errorf("repo.repos_index = %v; want 0", repoDoc["repos_index"])
+		}
+		if local, _ := repoDoc["local_file"].(string); !strings.HasSuffix(local, ".thrc") {
+			t.Errorf("repo.local_file = %v; want the .thrc path", repoDoc["local_file"])
+		}
+		file, ok := doc["config_file"].(map[string]any)
+		if !ok || file["exists"] != true || file["from_env"] != true {
+			t.Errorf("config_file = %v; want the $TH_CONFIG file marked existing", doc["config_file"])
+		}
+
+		// Outside a repository there are no repo layers to report.
+		out, _, err = th(t, home, "", work, "config", "--effective", "--json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		doc = nil
+		if err := json.Unmarshal([]byte(out), &doc); err != nil {
+			t.Fatalf("config --effective --json outside a repo: %v\n%s", err, out)
+		}
+		if v, ok := doc["repo"]; ok {
+			t.Errorf("repo = %v; want the key absent outside a repository", v)
+		}
+
+		// --json is meaningless without --effective: th config already
+		// prints the file as JSON.
+		_, stderr, err = th(t, home, cfgEff, repo, "config", "--json")
+		if err == nil {
+			t.Fatal("expected an error for --json without --effective")
+		}
+		if !strings.Contains(stderr, "--json requires --effective") {
+			t.Errorf("stderr = %q; want the --effective hint", stderr)
 		}
 	})
 

@@ -55,6 +55,38 @@ Conventions worth keeping:
 - Interactive prompts (huh) need a non-TTY fallback that errors clearly
   instead of hanging.
 
+## VS Code extension
+
+`vscode/` is a TypeScript workspace holding the Treehouse VS Code
+extension — a thin client that shells out to `th` for everything that
+changes state. Node 22, pinned in `vscode/.nvmrc`:
+
+```sh
+cd vscode && npm ci
+npm run lint
+npm run typecheck
+npm run test:unit         # vitest, over the parsing seams
+npm run test:integration  # @vscode/test-electron, one smoke test
+```
+
+Press F5 to debug from either the repo root (`.vscode/launch.json`) or with
+`vscode/` open as the workspace folder (`vscode/.vscode/launch.json`): both
+start the esbuild watch and launch an Extension Development Host.
+
+Two hard rules:
+
+- **Never put a `.go` file under `vscode/`.** The CLI release workflow
+  decides whether to publish by diffing `'*.go'`, a pathspec that matches
+  across directories, so one stray Go file would publish a CLI release on
+  every extension-only change. CI fails the build if it finds one.
+- **Extension releases are tagged `ext-v*`, never `v*`.** A `v*` tag fires
+  goreleaser and releases the CLI.
+
+To ship a new extension version: bump `version` in `vscode/package.json`,
+add the matching `vscode/CHANGELOG.md` section, merge the PR, then
+`git tag ext-v0.1.1 && git push origin ext-v0.1.1`. Unlike the CLI, the
+extension never auto-releases on merge.
+
 ## Pull requests
 
 - CI runs gofmt, `go vet`, and the tests on Linux and macOS; keep them

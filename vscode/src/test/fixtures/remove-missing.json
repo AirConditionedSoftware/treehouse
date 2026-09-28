@@ -1,0 +1,14 @@
+[
+  {
+    "target": "done-work",
+    "path": "/repo/worktrees/myapp/done-work",
+    "branch": "done-work",
+    "removed": true,
+    "branch_action": "kept"
+  },
+  {
+    "target": "no-such-branch",
+    "removed": false,
+    "error": "no worktree found for \"no-such-branch\" (see th list)"
+  }
+]

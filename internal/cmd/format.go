@@ -31,15 +31,24 @@ func gatherFacts(w gitx.Worktree, defBranch string) worktreeFacts {
 		f.changes, f.changesOK = n, true
 	}
 	if defBranch != "" && w.Branch != "" && w.Branch != defBranch && w.Head != "" {
-		ref := "refs/heads/" + defBranch
-		if !gitx.LocalBranchExists(".", defBranch) {
-			ref = "refs/remotes/origin/" + defBranch
-		}
 		f.mergeKnown = true
-		f.merged = gitx.IsAncestor(".", w.Head, ref)
+		f.merged = gitx.IsAncestor(".", w.Head, mergeRefFor(defBranch))
 	}
 	f.ahead, f.behind, f.syncKnown, f.upstreamGone = syncState(w.Branch)
 	return f
+}
+
+// mergeRefFor is the ref merge status is measured against: the local
+// default branch when the repository has one, else its origin counterpart —
+// a clone that never checked out main still knows origin/main.
+func mergeRefFor(defBranch string) string {
+	if defBranch == "" {
+		return ""
+	}
+	if gitx.LocalBranchExists(".", defBranch) {
+		return "refs/heads/" + defBranch
+	}
+	return "refs/remotes/origin/" + defBranch
 }
 
 // syncState reports how branch relates to its upstream: ahead/behind counts

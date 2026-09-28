@@ -1,0 +1,10 @@
+[
+  {
+    "target": "spare-unmerged",
+    "path": "/repo/worktrees/myapp/spare-unmerged",
+    "branch": "spare-unmerged",
+    "removed": true,
+    "branch_action": "kept",
+    "branch_reason": "not_fully_merged"
+  }
+]

@@ -38,6 +38,7 @@ func init() {
 	rootCmd.Flags().BoolVarP(&removeDeleteBranch, "delete-branch", "d", false, "with -r: also delete the branch")
 	rootCmd.Flags().BoolVar(&removeNoPreRemove, "no-pre-remove", false, "with -r: skip the config's pre_remove commands")
 	rootCmd.Flags().BoolVar(&removeNoPostRemove, "no-post-remove", false, "with -r: skip the config's post_remove commands")
+	rootCmd.Flags().BoolVar(&removeJSON, "json", false, "with -r: output removal results as JSON")
 }
 
 func Execute(version string) {

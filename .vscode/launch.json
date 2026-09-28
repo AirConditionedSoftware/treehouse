@@ -1,0 +1,15 @@
+{
+  // F5 from the repo root: runs the extension under vscode/ in a new Extension
+  // Development Host. Opening vscode/ as the folder uses its own launch.json.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Treehouse Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/vscode"],
+      "outFiles": ["${workspaceFolder}/vscode/dist/**/*.js"],
+      "preLaunchTask": "npm: watch - vscode"
+    }
+  ]
+}

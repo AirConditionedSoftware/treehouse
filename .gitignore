@@ -4,3 +4,8 @@ test-config.json
 ENHANCEMENTS.md
 .plans/
 .explorations/
+vscode/node_modules/
+vscode/dist/
+vscode/out/
+vscode/.vscode-test/
+*.vsix

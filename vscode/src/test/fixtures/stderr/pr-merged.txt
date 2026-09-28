@@ -1,0 +1,2 @@
+Warning: PR #12 is merged
+Creating worktree with new branch "fix-login" from origin/main

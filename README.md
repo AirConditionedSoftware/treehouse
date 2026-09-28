@@ -48,8 +48,11 @@ go install github.com/AirConditionedSoftware/treehouse/cmd/th@latest
   list never fetches, so `git fetch` first for fresh numbers. The `*` marks
   the worktree you're in; locked and prunable worktrees carry inline tags,
   and `--json` has full paths and flags plus `ahead`/`behind` (present —
-  including at 0 — only for branches with a live upstream) and
-  `upstream_gone`. The open and remove pickers show the same entries.
+  including at 0 — only for branches with a live upstream), `upstream_gone`,
+  `dirty` (the pending-file count; `0` is clean, absent means it couldn't be
+  probed) and `merged` (absent where merge status doesn't apply: a bare or
+  detached worktree, or the default branch itself). The open and remove
+  pickers show the same entries.
 - `th add <branch> [--base <ref>] [--path <dir>]` — create a worktree:
   - branch exists locally → checked out as-is
   - branch exists on `origin` → local branch created tracking it (fetches
@@ -106,8 +109,8 @@ go install github.com/AirConditionedSoftware/treehouse/cmd/th@latest
   `--link-file`/`--no-link-files` flags. Prints nothing on stdout — all
   narration goes to stderr, ending with a `Refreshed <path>` line per
   worktree.
-- `th remove [branch...] [--force] [--delete-branch]` (aliases: `th rm`,
-  `th -r`) — remove the worktrees that have the given branches checked out;
+- `th remove [branch...] [--force] [--delete-branch] [--json]` (aliases:
+  `th rm`, `th -r`) — remove the worktrees that have the given branches checked out;
   the branches themselves are kept unless `--delete-branch`/`-d` is passed.
   Paths work too. With no arguments, an interactive picker lets you select
   one or more worktrees to delete, showing each branch's last commit and how
@@ -132,7 +135,15 @@ go install github.com/AirConditionedSoftware/treehouse/cmd/th@latest
   `post_remove` commands run last, in the main worktree, after the removal
   (and any branch deletion) has settled; a failure is reported but the
   removal stands. Skip them once with `--no-pre-remove` /
-  `--no-post-remove`. One edge: a `pre_remove` hook that dirties a clean
+  `--no-post-remove`. `--json` prints one array on stdout, an object per
+  attempted target: `target`, `path`, `branch`, `removed`, and — when they
+  apply — `skipped_dirty`, `branch_action` (`deleted`/`kept`),
+  `branch_reason` (`default_branch`, `not_fully_merged`, `declined`,
+  `delete_failed`, `forced`), `branch_error`, `workspace_file`, and `error`.
+  The document is emitted even when the run fails, so the targets that were
+  removed before the failure are still reported; an interactive run that
+  selects nothing prints `[]`. The stderr narration is unchanged. `th -r`
+  takes `--json` too. One edge: a `pre_remove` hook that dirties a clean
   worktree can make the non-forced git removal fail — the remedy is
   `--force`.
 - `th clean [--dry-run] [--yes] [--force] [--delete-branches]` — find
@@ -188,11 +199,19 @@ go install github.com/AirConditionedSoftware/treehouse/cmd/th@latest
   file exists, and fails loudly if the file is invalid. Run inside a repo
   that has a `.thrc`, it prints and validates that file too, after the
   global one.
-- `th config --effective` — print the fully merged settings for the
+- `th config --effective [--json]` — print the fully merged settings for the
   current repository as a table, with the layer each value came from:
   `default`, `top-level`, `repos[N]`, or `.thrc`. The layers consulted
   (config file, matching `repos` entry, `.thrc`) go to stderr. The
   debuggable view of the [four-layer merge](#per-repository-overrides-repos).
+  `--json` prints the same thing as one document instead: `config_file`
+  (`path`, `exists`, `from_env`), `repo` (`name`, `main_path`, `local_file`,
+  `repos_index`, `repos_path` — absent outside a repository), `settings`
+  (every setting, effective and concrete: pointer settings resolved to true
+  or false, `prefix_separator` carrying its lazy default, lists never null,
+  `vscode` nested as in the file) and `sources` (the same layer labels as
+  the table, keyed by the dotted setting names). It needs `--effective`:
+  plain `th config` already prints JSON.
 - `th migrate [--global] [--dry-run] [--yes] [--backup|--no-backup]` —
   update the repository's `.thrc` to the current config schema on demand,
   instead of waiting for the next interactive command to offer it (see
@@ -796,6 +815,39 @@ One caveat: VS Code settings sync carries the absolute schema `url` to your
 other machines, where a different home directory turns it into "unable to
 load schema" on hover. Running `th schema install` there fixes it.
 
+### VS Code extension
+
+`vscode/` in this repository holds a VS Code extension that puts the same
+worktrees in the Activity Bar: every worktree of every open repository in
+one tree — branch, ahead/behind, change count, lock and prunable state —
+with create-from-branch, create-from-pull-request, remove, open, reveal,
+and open-in-terminal. It is a thin client over the `th` binary: every
+mutation runs the same command you would type in a terminal, so your
+config, your `.thrc`, and your hooks apply unchanged.
+
+It is not on the Marketplace. Install the `.vsix` attached to an extension
+release (they are tagged `ext-v*`) on the
+[releases page](https://github.com/AirConditionedSoftware/treehouse/releases):
+
+```sh
+code --install-extension treehouse-0.1.0.vsix
+```
+
+`th` must be on `PATH`, or point the `treehouse.path` setting at it
+(absolute path, or a name on `PATH`; default `"th"`). The extension
+requires **th 0.5.0 or newer** — with an older binary the tree still lists
+worktrees, but change counts and merge status are missing and the mutating
+commands warn once with an upgrade hint.
+
+Worktrees created from the extension are created with `--no-open`: the
+extension decides whether and how a new worktree opens, through its own
+`treehouse.openAfterCreate` setting, so `vscode.open` does **not** apply to
+extension-initiated creates. Everything else — placement, workspace files,
+window colors, hooks — behaves exactly as it does from the shell.
+
+Full documentation, including every setting, is in
+[`vscode/README.md`](vscode/README.md).
+
 ## Development
 
 ```sh
@@ -824,6 +876,13 @@ Each release also updates the Homebrew cask in
 [AirConditionedSoftware/homebrew-tap](https://github.com/AirConditionedSoftware/homebrew-tap),
 pushed by goreleaser using the `TAP_GITHUB_TOKEN` repository secret — a
 token with write access to the tap repository.
+
+The VS Code extension in `vscode/` releases on its own, and never on merge:
+bump `version` in `vscode/package.json`, add the matching
+`vscode/CHANGELOG.md` section, then push an `ext-v*` tag (`git tag
+ext-v0.1.1 && git push origin ext-v0.1.1`). That tag builds, packages, and
+attaches the `.vsix` to a GitHub release via
+`.github/workflows/vscode.yml`. `v*` tags belong to the CLI alone.
 
 ## Contributing
 

@@ -1,0 +1,280 @@
+{
+  "name": "treehouse",
+  "displayName": "Treehouse",
+  "description": "Manage git worktrees from the Activity Bar, powered by the th CLI.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "publisher": "AirConditionedSoftware",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AirConditionedSoftware/treehouse.git",
+    "directory": "vscode"
+  },
+  "homepage": "https://github.com/AirConditionedSoftware/treehouse#readme",
+  "bugs": {
+    "url": "https://github.com/AirConditionedSoftware/treehouse/issues"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "worktree",
+    "treehouse",
+    "branch"
+  ],
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=20"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:.git"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "treehouse",
+          "title": "Treehouse",
+          "icon": "media/treehouse.svg"
+        }
+      ]
+    },
+    "views": {
+      "treehouse": [
+        {
+          "id": "treehouse.worktrees",
+          "name": "Worktrees"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "treehouse.worktrees",
+        "when": "!treehouse.inRepo",
+        "contents": "Open a folder inside a git repository to manage its worktrees."
+      },
+      {
+        "view": "treehouse.worktrees",
+        "when": "treehouse.inRepo && !treehouse.binaryOk",
+        "contents": "The `th` binary was not found.\n[Install instructions](https://github.com/AirConditionedSoftware/treehouse#install)\n[Open Settings](command:treehouse.openSettings)"
+      },
+      {
+        "view": "treehouse.worktrees",
+        "when": "treehouse.inRepo && treehouse.binaryOk && treehouse.empty",
+        "contents": "No worktrees yet.\n[Create Worktree](command:treehouse.addWorktree)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "treehouse.refresh",
+        "title": "Refresh",
+        "category": "Treehouse",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "treehouse.addWorktree",
+        "title": "New Worktree from Branch…",
+        "category": "Treehouse",
+        "icon": "$(add)"
+      },
+      {
+        "command": "treehouse.addWorktreeFromPR",
+        "title": "New Worktree from Pull Request…",
+        "category": "Treehouse",
+        "icon": "$(git-pull-request)"
+      },
+      {
+        "command": "treehouse.removeWorktree",
+        "title": "Remove Worktree…",
+        "category": "Treehouse",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "treehouse.openWorktree",
+        "title": "Open",
+        "category": "Treehouse"
+      },
+      {
+        "command": "treehouse.openWorktreeInNewWindow",
+        "title": "Open in New Window",
+        "category": "Treehouse",
+        "icon": "$(empty-window)"
+      },
+      {
+        "command": "treehouse.copyPath",
+        "title": "Copy Path",
+        "category": "Treehouse"
+      },
+      {
+        "command": "treehouse.revealInOS",
+        "title": "Reveal in Finder",
+        "category": "Treehouse"
+      },
+      {
+        "command": "treehouse.openInTerminal",
+        "title": "Open in Integrated Terminal",
+        "category": "Treehouse"
+      },
+      {
+        "command": "treehouse.showOutput",
+        "title": "Show Treehouse Log",
+        "category": "Treehouse"
+      },
+      {
+        "command": "treehouse.openSettings",
+        "title": "Open Treehouse Settings",
+        "category": "Treehouse"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "treehouse.addWorktree",
+          "when": "view == treehouse.worktrees",
+          "group": "navigation@1"
+        },
+        {
+          "command": "treehouse.addWorktreeFromPR",
+          "when": "view == treehouse.worktrees",
+          "group": "navigation@2"
+        },
+        {
+          "command": "treehouse.refresh",
+          "when": "view == treehouse.worktrees",
+          "group": "navigation@3"
+        },
+        {
+          "command": "treehouse.showOutput",
+          "when": "view == treehouse.worktrees",
+          "group": "1_misc"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "treehouse.openWorktreeInNewWindow",
+          "when": "view == treehouse.worktrees && viewItem =~ /^worktree\\b/",
+          "group": "inline@1"
+        },
+        {
+          "command": "treehouse.removeWorktree",
+          "when": "view == treehouse.worktrees && viewItem =~ /\\.removable\\b/",
+          "group": "inline@2"
+        },
+        {
+          "command": "treehouse.openWorktree",
+          "when": "view == treehouse.worktrees && viewItem =~ /^worktree\\b/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "treehouse.openInTerminal",
+          "when": "view == treehouse.worktrees && viewItem =~ /^worktree\\b/",
+          "group": "1_open@3"
+        },
+        {
+          "command": "treehouse.copyPath",
+          "when": "view == treehouse.worktrees && viewItem =~ /^worktree\\b/",
+          "group": "2_copy"
+        },
+        {
+          "command": "treehouse.revealInOS",
+          "when": "view == treehouse.worktrees && viewItem =~ /^worktree\\b/",
+          "group": "2_copy"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "treehouse.openWorktree",
+          "when": "false"
+        },
+        {
+          "command": "treehouse.copyPath",
+          "when": "false"
+        },
+        {
+          "command": "treehouse.revealInOS",
+          "when": "false"
+        },
+        {
+          "command": "treehouse.openInTerminal",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Treehouse",
+      "properties": {
+        "treehouse.path": {
+          "type": "string",
+          "default": "th",
+          "markdownDescription": "Absolute path to the `th` binary, or a name to resolve on `PATH`."
+        },
+        "treehouse.openAfterCreate": {
+          "type": "string",
+          "enum": [
+            "newWindow",
+            "currentWindow",
+            "ask",
+            "none"
+          ],
+          "enumDescriptions": [
+            "Open the new worktree in a new window.",
+            "Open the new worktree in the current window.",
+            "Ask every time.",
+            "Do not open the new worktree."
+          ],
+          "default": "ask",
+          "description": "What to do after a worktree is created."
+        },
+        "treehouse.removeDefaultDeleteBranch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pre-check \"Also delete branch\" when removing a worktree."
+        },
+        "treehouse.refreshOnFocus": {
+          "type": "boolean",
+          "default": true,
+          "description": "Refresh the worktree list when the window regains focus."
+        },
+        "treehouse.showRemoteBranches": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Seed the branch picker from `refs/remotes/origin` as well as local branches."
+        },
+        "treehouse.commandTimeoutSeconds": {
+          "type": "number",
+          "default": 180,
+          "minimum": 1,
+          "markdownDescription": "Timeout for a single `th` invocation. `th add` may need to fetch."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "node esbuild.mjs --production",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "test:integration": "npm run compile && tsc -p tsconfig.test.json && node ./out/test/integration/runTest.js",
+    "test": "npm run test:unit && npm run test:integration",
+    "vscode:prepublish": "npm run package"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.19.9",
+    "@types/vscode": "1.90.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.18.0",
+    "mocha": "^11.0.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^3.0.0"
+  }
+}

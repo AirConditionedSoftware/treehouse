@@ -1,0 +1,66 @@
+{
+  "config_file": {
+    "path": "/repo/config.json",
+    "exists": true,
+    "from_env": true
+  },
+  "repo": {
+    "name": "myapp",
+    "main_path": "/repo/myapp",
+    "local_file": "/repo/myapp/.thrc",
+    "repos_index": 0,
+    "repos_path": "/repo/myapp"
+  },
+  "settings": {
+    "auto_cd": true,
+    "branch_prefix": "team",
+    "copy_files": [
+      ".env"
+    ],
+    "copy_hooks": false,
+    "default_base": "main",
+    "full_paths": false,
+    "link_files": [],
+    "post_create": [
+      "echo provisioned"
+    ],
+    "post_remove": [],
+    "pre_create": [
+      "echo before"
+    ],
+    "pre_remove": [],
+    "prefix_separator": "/",
+    "run": "",
+    "vscode": {
+      "open": false,
+      "window_color": "#2c5f2d",
+      "window_title": "",
+      "workspace_file": false,
+      "workspace_paths": [],
+      "workspace_prefix": ""
+    },
+    "worktree_dir": "/repo/worktrees/{repo}/{branch}"
+  },
+  "sources": {
+    "auto_cd": "default",
+    "branch_prefix": ".thrc",
+    "copy_files": "top-level",
+    "copy_hooks": "default",
+    "default_base": "repos[0]",
+    "full_paths": "default",
+    "link_files": "default",
+    "post_create": ".thrc",
+    "post_remove": "default",
+    "pre_create": ".thrc",
+    "pre_remove": "default",
+    "prefix_separator": "default",
+    "run": "default",
+    "vscode.open": "default",
+    "vscode.window_color": "repos[0]",
+    "vscode.window_title": "default",
+    "vscode.workspace_file": "top-level",
+    "vscode.workspace_paths": "default",
+    "vscode.workspace_prefix": "default",
+    "worktree_dir": "top-level"
+  }
+}

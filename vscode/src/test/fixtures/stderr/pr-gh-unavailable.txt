@@ -1,0 +1,2 @@
+gh unavailable for PR #12 (exec: "gh": executable file not found in $PATH); falling back to plain git
+Creating worktree for PR #12 as branch "pr-12"
