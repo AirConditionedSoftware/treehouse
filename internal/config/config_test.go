@@ -957,6 +957,8 @@ func TestSetFieldsCoversEveryField(t *testing.T) {
 			fv.Set(reflect.New(f.Type.Elem()))
 		case reflect.Slice:
 			fv.Set(reflect.MakeSlice(f.Type, 0, 0))
+		case reflect.Map:
+			fv.Set(reflect.MakeMap(f.Type))
 		default:
 			t.Fatalf("VSCode field %s: unhandled kind %s — extend this test, merge, and setFields", f.Name, f.Type.Kind())
 		}

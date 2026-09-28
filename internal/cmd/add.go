@@ -310,6 +310,8 @@ func provisionWorktree(ctx *addContext, target, branch string, runPost bool) (st
 		fmt.Fprintf(os.Stderr, "No branch checked out at %s; skipping the workspace file\n", displayPath(target))
 	} else if settings.VSCodeSettings().WindowColor != "" {
 		fmt.Fprintln(os.Stderr, "vscode.window_color has no effect without vscode.workspace_file")
+	} else if settings.VSCodeSettings().SettingsOverrides != nil {
+		fmt.Fprintln(os.Stderr, "vscode.settings_overrides has no effect without vscode.workspace_file")
 	}
 	return openTarget, nil
 }
@@ -330,6 +332,7 @@ func workspaceFilePath(settings config.Settings, worktreePath, branch string) st
 // verbatim, VS Code title variables included) or the repo name. When
 // vscode.window_color is set, workbench.colorCustomizations colors the
 // window's title and status bars so each worktree is visibly distinct.
+// vscode.settings_overrides is applied last, so its keys replace any of those.
 func writeWorkspaceFile(worktreePath string, settings config.Settings, repo, branch string) (string, error) {
 	vs := settings.VSCodeSettings()
 	title := vs.WindowTitle
@@ -355,6 +358,9 @@ func writeWorkspaceFile(worktreePath string, settings config.Settings, repo, bra
 	wsSettings := map[string]any{"window.title": title}
 	if bg := effectiveWindowColor(vs.WindowColor, repo, branch); bg != "" {
 		wsSettings["workbench.colorCustomizations"] = windowColorCustomizations(bg)
+	}
+	for k, v := range vs.SettingsOverrides {
+		wsSettings[k] = v
 	}
 	ws := map[string]any{
 		"folders":  folders,

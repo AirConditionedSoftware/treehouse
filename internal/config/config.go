@@ -128,6 +128,12 @@ type VSCode struct {
 	// files after the worktree itself. A repo entry's list replaces the
 	// global one.
 	WorkspacePaths []WorkspacePath `json:"workspace_paths,omitempty"`
+	// SettingsOverrides is copied key by key into the generated workspace
+	// file's "settings" object, last, so a key here beats what th writes
+	// itself (window.title, workbench.colorCustomizations). Keys are VS
+	// Code setting names and values pass through as given. A layer's object
+	// replaces the one inherited from the layer below.
+	SettingsOverrides map[string]any `json:"settings_overrides,omitempty"`
 }
 
 // WorkspacePath is one extra folder for generated .code-workspace files.
@@ -553,6 +559,9 @@ func (v *VSCode) merge(over VSCode) {
 	if over.WorkspacePaths != nil {
 		v.WorkspacePaths = over.WorkspacePaths
 	}
+	if over.SettingsOverrides != nil {
+		v.SettingsOverrides = over.SettingsOverrides
+	}
 }
 
 // setFields lists the JSON names of the fields s explicitly sets — the
@@ -581,6 +590,7 @@ func (s Settings) setFields() []string {
 		set("vscode.window_title", v.WindowTitle != "")
 		set("vscode.window_color", v.WindowColor != "")
 		set("vscode.workspace_paths", v.WorkspacePaths != nil)
+		set("vscode.settings_overrides", v.SettingsOverrides != nil)
 	}
 	set("full_paths", s.FullPaths != nil)
 	set("auto_cd", s.AutoCD != nil)

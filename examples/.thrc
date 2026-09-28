@@ -17,7 +17,11 @@
     "workspace_paths": [
       { "name": "docs", "path": "~/notes/myapp" },
       { "path": "~/code/shared-lib" }
-    ]
+    ],
+    "settings_overrides": {
+      "editor.tabSize": 2,
+      "files.exclude": { "dist": true }
+    }
   },
   "full_paths": false,
   "auto_cd": false,

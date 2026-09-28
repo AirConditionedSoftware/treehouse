@@ -336,7 +336,8 @@ be set at the top level (applying to every repo) and overridden per repo:
         "workspace_paths": [
           { "name": "docs", "path": "~/notes/myapp" },
           { "path": "~/code/shared-lib" }
-        ]
+        ],
+        "settings_overrides": { "editor.tabSize": 2 }
       },
       "full_paths": true,
       "auto_cd": false,
@@ -448,6 +449,13 @@ the object rather than replacing it.
     directory). They're appended to the `folders` array after the worktree
     itself, so the workspace spans multiple folders. A repo entry's list
     replaces the global one.
+  - `vscode.settings_overrides` — an object of VS Code settings copied
+    verbatim into the workspace file's `settings` block, e.g.
+    `{"editor.tabSize": 2, "files.exclude": {"dist": true}}`. It's applied
+    last, so a key here replaces what th writes itself: `window.title`
+    beats `vscode.window_title` and `workbench.colorCustomizations` beats
+    `vscode.window_color`. A layer's object replaces the one below it rather
+    than merging keys. Requires `vscode.workspace_file`. Default: none.
 - `full_paths` — show absolute paths in tables, prompts, and messages
   instead of abbreviating your home directory to `~`. Same effect as the
   global `--full-paths` flag. (`th add`'s stdout path and `--json` output
@@ -580,8 +588,8 @@ Flags always win over the config for that one invocation:
 
 `--no-color`, `th remove --force`, and `th remove --delete-branch` are
 flag-only; `vscode.workspace_file`, `vscode.workspace_prefix`,
-`vscode.window_title`, `vscode.window_color`, `vscode.workspace_paths`, and
-`prefix_separator` are config-only.
+`vscode.window_title`, `vscode.window_color`, `vscode.workspace_paths`,
+`vscode.settings_overrides`, and `prefix_separator` are config-only.
 
 ### Repo-local config (`.thrc`)
 

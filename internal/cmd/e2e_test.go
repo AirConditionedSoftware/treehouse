@@ -1276,6 +1276,57 @@ func TestEndToEnd(t *testing.T) {
 		}
 	})
 
+	t.Run(".thrc settings_overrides replace generated workspace settings", func(t *testing.T) {
+		cfgSO := filepath.Join(work, "th-overrides.json")
+		cfgJSON := `{
+  "worktree_dir": "` + trees + `/{repo}/{branch}",
+  "vscode": {"workspace_file": true, "window_title": "global title", "window_color": "#336699"}
+}`
+		if err := os.WriteFile(cfgSO, []byte(cfgJSON), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		localJSON := `{
+  "version": 2,
+  "vscode": {"settings_overrides": {
+    "window.title": "override title",
+    "workbench.colorCustomizations": {"titleBar.activeBackground": "#000000"},
+    "editor.tabSize": 2
+  }}
+}`
+		if err := os.WriteFile(localCfg, []byte(localJSON), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(localCfg)
+
+		out, stderr, err := th(t, home, cfgSO, repo, "add", "so-test")
+		if err != nil {
+			t.Fatalf("%v\n%s", err, stderr)
+		}
+		data, err := os.ReadFile(filepath.Join(filepath.Dir(out), "so-test.code-workspace"))
+		if err != nil {
+			t.Fatalf("workspace file not written: %v", err)
+		}
+		var ws struct {
+			Settings map[string]any `json:"settings"`
+		}
+		if err := json.Unmarshal(data, &ws); err != nil {
+			t.Fatalf("workspace file is not valid JSON: %v\n%s", err, data)
+		}
+		if got, _ := ws.Settings["window.title"].(string); got != "override title" {
+			t.Errorf("window.title = %q; want the settings_overrides value over window_title", got)
+		}
+		colors, _ := ws.Settings["workbench.colorCustomizations"].(map[string]any)
+		if len(colors) != 1 || colors["titleBar.activeBackground"] != "#000000" {
+			t.Errorf("workbench.colorCustomizations = %v; want the override object verbatim, replacing window_color's", colors)
+		}
+		if got, _ := ws.Settings["editor.tabSize"].(float64); got != 2 {
+			t.Errorf("editor.tabSize = %v; want 2 passed through", ws.Settings["editor.tabSize"])
+		}
+		if _, stderr, err := th(t, home, cfgSO, repo, "remove", "so-test"); err != nil {
+			t.Fatalf("%v\n%s", err, stderr)
+		}
+	})
+
 	t.Run("repo post_create requires approval", func(t *testing.T) {
 		trustFile := filepath.Join(home, ".th", "trust.json")
 		defer func() {

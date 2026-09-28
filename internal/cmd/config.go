@@ -175,6 +175,7 @@ func runConfigEffective() error {
 		{"vscode.window_title", effectiveString(vs.WindowTitle), prov.Source("vscode.window_title")},
 		{"vscode.window_color", effectiveString(vs.WindowColor), prov.Source("vscode.window_color")},
 		{"vscode.workspace_paths", effectiveList(vs.WorkspacePaths), prov.Source("vscode.workspace_paths")},
+		{"vscode.settings_overrides", effectiveMap(vs.SettingsOverrides), prov.Source("vscode.settings_overrides")},
 		{"full_paths", strconv.FormatBool(res.FullPathsEnabled()), prov.Source("full_paths")},
 		{"auto_cd", strconv.FormatBool(res.AutoCDEnabled()), prov.Source("auto_cd")},
 		{"pre_create", effectiveList(res.PreCreate), prov.Source("pre_create")},
@@ -234,6 +235,19 @@ func effectiveList[T any](list []T) string {
 		return "(none)"
 	}
 	data, err := json.Marshal(list)
+	if err != nil {
+		return "?"
+	}
+	return string(data)
+}
+
+// effectiveMap renders an object setting the way effectiveList renders a
+// list: (none) when never set, JSON otherwise.
+func effectiveMap(m map[string]any) string {
+	if m == nil {
+		return "(none)"
+	}
+	data, err := json.Marshal(m)
 	if err != nil {
 		return "?"
 	}

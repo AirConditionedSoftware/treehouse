@@ -126,6 +126,10 @@
           "type": "array",
           "items": { "$ref": "#/definitions/workspace_path" },
           "description": "Extra folders added to generated .code-workspace files, after the worktree itself. A repos entry or .thrc replaces this list rather than adding to it."
+        },
+        "settings_overrides": {
+          "type": "object",
+          "description": "VS Code settings copied verbatim into the generated workspace file's \"settings\" object, applied last so they replace anything th writes itself (window.title from window_title, workbench.colorCustomizations from window_color). A repos entry or .thrc replaces this object rather than adding to it. Requires workspace_file."
         }
       }
     },
